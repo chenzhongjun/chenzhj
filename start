@@ -1,0 +1,35 @@
+#! /bin/bash                                                                                                                                                                                                  
+
+set -e pipefail
+
+if [ -f .env ]; then
+    source .env
+else
+    echo "No .env file, exit"
+    exit 1
+fi
+
+if [ ! -d $PROJECT ]; then
+    mkdir $PROJECT; chmod 755 $PROJECT
+fi
+
+if ! docker images | grep "itc/aws" > /dev/null; then
+    #docker pull docker.it-consultis.com.cn/itc/aws:0.1.1
+    docker pull $DOCKER_IMAGE
+fi
+
+if ! docker ps -a | grep -e "${PROJECT}_backup_app" > /dev/null; then
+    docker create --name ${PROJECT}_backup_app --tty -v /root/${PROJECT}_backup_app:/${PROJECT}_backup_app -v $AWS_CONFIG:$AWS_CONFIG $DOCKER_IMAGE > /dev/null
+    docker start ${PROJECT}_backup_app > /dev/null
+else
+    docker stop ${PROJECT}_backup_app > /dev/null
+    docker rm ${PROJECT}_backup_app > /dev/null
+    docker create --name ${PROJECT}_backup_app --tty -v /root/${PROJECT}_backup_app:/${PROJECT}_backup_app -v $AWS_CONFIG:$AWS_CONFIG $DOCKER_IMAGE > /dev/null
+    docker start ${PROJECT}_backup_app > /dev/null
+fi
+
+
+if ! grep "${PROJECT}_backup.sh" /etc/crontab > /dev/null; then
+    cp /etc/crontab /etc/crontab.bak
+    echo "0  2    * * *   root   cd /root/${PROJECT}_backup_app/ && bash ${PROJECT}_backup.sh >> /root/${PROJECT}_backup_app/stdout.log 2>> /root/${PROJECT}_backup_app/stderr.log" >> /etc/crontab
+fi
